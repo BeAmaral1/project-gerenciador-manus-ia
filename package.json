@@ -1,5 +1,5 @@
 {
-  "name": "teste1",
+  "name": "taskflow",
   "version": "1.0.0",
   "main": "openai-proxy.js",
   "scripts": {
