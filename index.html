@@ -173,7 +173,7 @@
     </div>
 
     <!-- Controles -->
-    <div class="controls">
+    <div class="controls action-buttons">
       <div class="controls-left">
         <button id="export-btn" type="button" class="btn btn-outline-primary" 
                 title="Exportar tarefas para JSON">
@@ -219,61 +219,24 @@
     </div>
 
     <!-- Lista de Tarefas -->
-    <div class="section" id="list-view">
+    <div class="section" id="task-list-container">
       <div class="section-title">
         <i class="bi bi-list-ul"></i> Minhas Tarefas
       </div>
       
-      <ul id="task-list" class="task-list">
+      <div id="task-list" class="task-list">
         <!-- Tarefas serão inseridas aqui via JavaScript -->
-      </ul>
-      
-      <div id="empty-state" class="text-center py-5" style="display: none;">
-        <i class="bi bi-inbox display-1 text-muted"></i>
-        <h3 class="text-muted mt-3">Nenhuma tarefa encontrada</h3>
-        <p class="text-muted">Adicione uma nova tarefa para começar!</p>
       </div>
     </div>
 
     <!-- Visualização Kanban -->
-    <div class="section" id="kanban-view" style="display: none;">
+    <div class="section" id="kanban-container" style="display: none;">
       <div class="section-title">
         <i class="bi bi-kanban"></i> Quadro Kanban
       </div>
       
-      <div class="kanban-container">
-        <div class="kanban-column">
-          <div class="kanban-header">
-            <div class="kanban-title">
-              <i class="bi bi-clock text-warning"></i> A Fazer
-            </div>
-          </div>
-          <div id="kanban-todo" class="kanban-tasks">
-            <!-- Tarefas A Fazer -->
-          </div>
-        </div>
-        
-        <div class="kanban-column">
-          <div class="kanban-header">
-            <div class="kanban-title">
-              <i class="bi bi-arrow-repeat text-info"></i> Em Andamento
-            </div>
-          </div>
-          <div id="kanban-doing" class="kanban-tasks">
-            <!-- Tarefas Em Andamento -->
-          </div>
-        </div>
-        
-        <div class="kanban-column">
-          <div class="kanban-header">
-            <div class="kanban-title">
-              <i class="bi bi-check-circle text-success"></i> Concluído
-            </div>
-          </div>
-          <div id="kanban-done" class="kanban-tasks">
-            <!-- Tarefas Concluídas -->
-          </div>
-        </div>
+      <div class="kanban-board">
+        <!-- Conteúdo do Kanban será inserido via JavaScript -->
       </div>
     </div>
   </main>
