@@ -1,597 +1,714 @@
-// TaskFlow - JS Completo
-// =====================
+// ===========================
+// TASKFLOW - JavaScript Moderno
+// ===========================
 
-// ---------------------
-// Utilitários
-// ---------------------
-
-// Exibe um toast (mensagem temporária) na tela
-function showToast(msg, type = "info") {
-    const toast = document.getElementById('toast');
-    const toastBody = toast.querySelector('.toast-body');
-    toastBody.textContent = msg;
-    toast.className = `toast align-items-center text-bg-${type} border-0 position-fixed top-0 end-0 mt-4 me-4 show ${type}`;
-    toast.style.display = "block";
-    setTimeout(() => { toast.classList.remove('show'); toast.style.display = "none"; }, 2500);
-}
-
-// ---------------------
-// Dados e Storage
-// ---------------------
-
-// Carrega tarefas do localStorage ou inicia vazio
-let tasks = JSON.parse(localStorage.getItem('tasks') || '[]');
-// Define a visualização padrão (lista ou kanban)
-let currentView = localStorage.getItem('currentView') || 'list';
-// Carrega o tema salvo ou usa o padrão
-let currentTheme = localStorage.getItem('theme') || 'default';
-
-// Aplica o tema salvo no localStorage ao carregar o dashboard
-document.addEventListener('DOMContentLoaded', function () {
-    const temaSalvo = localStorage.getItem('theme');
-    if (temaSalvo) {
-        applyTheme(temaSalvo);
-    }
-});
-
-// ---------------------
-// Renderização
-// ---------------------
-
-// Renderiza as tarefas na tela (lista ou kanban)
-function renderTasks() {
-    const list = document.getElementById('task-list');
-    list.innerHTML = '';
-    let filtered = filterTasks(tasks);
-
-    // Se for visualização Kanban, chama função específica
-    if (currentView === 'kanban') {
-        renderKanban(filtered);
-        return;
+class TaskFlow {
+    constructor() {
+        this.tasks = JSON.parse(localStorage.getItem('taskflow_tasks')) || [];
+        this.currentView = 'list';
+        this.currentTheme = localStorage.getItem('taskflow_theme') || 'default';
+        this.editingTaskId = null;
+        
+        this.init();
     }
 
-    // Renderiza cada tarefa como item de lista
-    filtered.forEach((task, idx) => {
-        const originalIdx = tasks.findIndex(t => t === task);
-        const li = document.createElement('li');
-        li.className = `list-group-item d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2${task.completed ? ' completed' : ''}`;
-        li.setAttribute('data-priority', task.priority);
-        li.setAttribute('tabindex', 0);
-        li.setAttribute('role', 'listitem');
-        li.dataset.idx = originalIdx;
+    init() {
+        this.setupEventListeners();
+        this.applyTheme(this.currentTheme);
+        this.updateStats();
+        this.renderTasks();
+        this.updateCategoryFilter();
+        this.showWelcomeMessage();
+    }
 
-        // Monta o conteúdo principal da tarefa
-        const left = document.createElement('div');
-        if (task.category)
-            left.innerHTML += `<span class="badge-category">${task.category}</span>`;
-        left.innerHTML += `<span class="priority">${capitalize(task.priority)}</span>`;
-        left.innerHTML += `<span class="fw-semibold ms-2">${escapeHtml(task.title)}</span>`;
-        if (task.due)
-            left.innerHTML += `<span class="due-date ms-2"><i class="bi bi-calendar-event"></i> ${task.due}</span>`;
+    setupEventListeners() {
+        // Formulário de nova tarefa
+        document.getElementById('task-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.addTask();
+        });
 
-        // Renderiza subtarefas, se houver
-        if (task.subtasks && task.subtasks.length) {
-            const ul = document.createElement('ul');
-            ul.className = "subtasks list-unstyled ms-4 mt-2";
-            task.subtasks.forEach((st, i) => {
-                ul.innerHTML += `<li>
-                    <input type="checkbox" ${st.done ? "checked" : ""} data-subidx="${i}" aria-label="Marcar subtarefa">
-                    ${escapeHtml(st.text)}
-                </li>`;
+        // Busca
+        document.getElementById('search-input').addEventListener('input', (e) => {
+            this.filterTasks();
+        });
+
+        // Filtros
+        document.getElementById('filter-category').addEventListener('change', () => {
+            this.filterTasks();
+        });
+
+        document.getElementById('filter-priority').addEventListener('change', () => {
+            this.filterTasks();
+        });
+
+        // Filtros rápidos
+        document.getElementById('filter-today').addEventListener('click', () => {
+            this.filterByDate('today');
+        });
+
+        document.getElementById('filter-week').addEventListener('click', () => {
+            this.filterByDate('week');
+        });
+
+        document.getElementById('filter-late').addEventListener('click', () => {
+            this.filterByDate('late');
+        });
+
+        // Alternância de visualização
+        document.getElementById('toggle-view-btn').addEventListener('click', () => {
+            this.toggleView();
+        });
+
+        // Temas
+        document.querySelectorAll('[data-theme]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const theme = btn.getAttribute('data-theme');
+                this.applyTheme(theme);
             });
-            left.appendChild(ul);
+        });
+
+        // Exportar/Importar
+        document.getElementById('export-btn').addEventListener('click', () => {
+            this.exportTasks();
+        });
+
+        document.getElementById('import-btn').addEventListener('click', () => {
+            document.getElementById('import-file').click();
+        });
+
+        document.getElementById('import-file').addEventListener('change', (e) => {
+            this.importTasks(e.target.files[0]);
+        });
+
+        // Modal de edição
+        document.getElementById('save-edit-btn').addEventListener('click', () => {
+            this.saveEdit();
+        });
+    }
+
+    addTask() {
+        const taskInput = document.getElementById('task-input');
+        const categoryInput = document.getElementById('category-input');
+        const priorityInput = document.getElementById('priority-input');
+        const dateInput = document.getElementById('date-input');
+
+        const task = {
+            id: Date.now(),
+            text: taskInput.value.trim(),
+            category: categoryInput.value.trim() || 'Geral',
+            priority: priorityInput.value,
+            date: dateInput.value,
+            status: 'todo',
+            completed: false,
+            createdAt: new Date().toISOString()
+        };
+
+        if (!task.text) {
+            this.showToast('Por favor, digite uma descrição para a tarefa.', 'warning');
+            return;
         }
 
-        // Botões de ação da tarefa
-        const actions = document.createElement('div');
-        actions.className = "actions d-flex gap-2";
-        actions.innerHTML = `
-            ${task.status === "doing" ? `
-                <button class="btn btn-secondary btn-sm to-todo-btn" title="Mover para A Fazer">
-                    <i class="bi bi-arrow-left"></i>
-                </button>
-            ` : `
-                <button class="btn btn-warning btn-sm in-progress-btn" title="Mover para Em andamento">
-                    <i class="bi bi-arrow-repeat"></i>
-                </button>
-            `}
-            <button class="btn btn-primary btn-sm edit-btn" title="Editar">
-                <i class="bi bi-pencil"></i>
-            </button>
-            <button class="btn btn-danger btn-sm delete-btn" title="Excluir">
-                <i class="bi bi-trash"></i>
-            </button>
-            <button class="btn btn-success btn-sm complete-btn" title="Concluir">
-                <i class="bi bi-check-lg"></i>
-            </button>
-        `;
+        this.tasks.push(task);
+        this.saveTasks();
+        this.updateStats();
+        this.renderTasks();
+        this.updateCategoryFilter();
 
-        li.appendChild(left);
-        li.appendChild(actions);
-        list.appendChild(li);
-    });
+        // Limpar formulário
+        taskInput.value = '';
+        categoryInput.value = '';
+        priorityInput.value = 'media';
+        dateInput.value = '';
 
-    updateStats();
-}
+        this.showToast('Tarefa adicionada com sucesso!', 'success');
+        
+        // Animação de foco
+        taskInput.focus();
+    }
 
-// Renderiza as tarefas no modo Kanban
-function renderKanban(filtered) {
-    const kanbanContainer = document.getElementById('task-list');
-    kanbanContainer.innerHTML = `
-        <div class="row g-3">
-            <div class="col-md-4">
-                <div class="kanban-col">
-                    <h5 class="text-center mb-3">A Fazer</h5>
-                    <div id="todo-tasks" class="kanban-tasks"></div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="kanban-col">
-                    <h5 class="text-center mb-3">Fazendo</h5>
-                    <div id="doing-tasks" class="kanban-tasks"></div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="kanban-col">
-                    <h5 class="text-center mb-3">Feito</h5>
-                    <div id="done-tasks" class="kanban-tasks"></div>
-                </div>
-            </div>
-        </div>
-    `;
+    deleteTask(id) {
+        if (confirm('Tem certeza que deseja excluir esta tarefa?')) {
+            this.tasks = this.tasks.filter(task => task.id !== id);
+            this.saveTasks();
+            this.updateStats();
+            this.renderTasks();
+            this.updateCategoryFilter();
+            this.showToast('Tarefa excluída com sucesso!', 'success');
+        }
+    }
 
-    // Distribui tarefas por status
-    const todoTasks = document.getElementById('todo-tasks');
-    const doingTasks = document.getElementById('doing-tasks');
-    const doneTasks = document.getElementById('done-tasks');
+    toggleTaskStatus(id) {
+        const task = this.tasks.find(t => t.id === id);
+        if (task) {
+            task.completed = !task.completed;
+            task.status = task.completed ? 'done' : 'todo';
+            this.saveTasks();
+            this.updateStats();
+            this.renderTasks();
+            
+            const message = task.completed ? 'Tarefa concluída!' : 'Tarefa reaberta!';
+            this.showToast(message, 'success');
+        }
+    }
 
-    filtered.forEach((task, idx) => {
-        const originalIdx = tasks.findIndex(t => t === task);
-        const card = document.createElement('div');
-        card.className = 'kanban-task card mb-2';
-        card.dataset.idx = originalIdx;
-        card.innerHTML = `
-            <div class="card-body p-3">
-                ${task.category ? `<span class="badge-category">${task.category}</span>` : ''}
-                <span class="priority">${capitalize(task.priority)}</span>
-                <h6 class="card-title mt-2">${escapeHtml(task.title)}</h6>
-                ${task.due ? `<small class="text-muted"><i class="bi bi-calendar-event"></i> ${task.due}</small>` : ''}
-                <div class="actions d-flex gap-1 mt-2">
-                    ${task.status === "doing" ? `
-                        <button class="btn btn-secondary btn-sm to-todo-btn" title="Mover para A Fazer">
-                            <i class="bi bi-arrow-left"></i>
+    moveTaskToInProgress(id) {
+        const task = this.tasks.find(t => t.id === id);
+        if (task) {
+            task.status = task.status === 'doing' ? 'todo' : 'doing';
+            this.saveTasks();
+            this.renderTasks();
+            
+            const message = task.status === 'doing' ? 'Tarefa movida para "Em Andamento"!' : 'Tarefa movida para "A Fazer"!';
+            this.showToast(message, 'info');
+        }
+    }
+
+    editTask(id) {
+        const task = this.tasks.find(t => t.id === id);
+        if (task) {
+            this.editingTaskId = id;
+            
+            document.getElementById('edit-task-input').value = task.text;
+            document.getElementById('edit-category-input').value = task.category;
+            document.getElementById('edit-priority-input').value = task.priority;
+            document.getElementById('edit-date-input').value = task.date;
+            
+            const modal = new bootstrap.Modal(document.getElementById('editModal'));
+            modal.show();
+        }
+    }
+
+    saveEdit() {
+        if (!this.editingTaskId) return;
+
+        const task = this.tasks.find(t => t.id === this.editingTaskId);
+        if (task) {
+            const newText = document.getElementById('edit-task-input').value.trim();
+            
+            if (!newText) {
+                this.showToast('Por favor, digite uma descrição para a tarefa.', 'warning');
+                return;
+            }
+
+            task.text = newText;
+            task.category = document.getElementById('edit-category-input').value.trim() || 'Geral';
+            task.priority = document.getElementById('edit-priority-input').value;
+            task.date = document.getElementById('edit-date-input').value;
+
+            this.saveTasks();
+            this.renderTasks();
+            this.updateCategoryFilter();
+
+            const modal = bootstrap.Modal.getInstance(document.getElementById('editModal'));
+            modal.hide();
+
+            this.showToast('Tarefa atualizada com sucesso!', 'success');
+        }
+
+        this.editingTaskId = null;
+    }
+
+    filterTasks() {
+        const searchTerm = document.getElementById('search-input').value.toLowerCase();
+        const categoryFilter = document.getElementById('filter-category').value;
+        const priorityFilter = document.getElementById('filter-priority').value;
+
+        const filteredTasks = this.tasks.filter(task => {
+            const matchesSearch = task.text.toLowerCase().includes(searchTerm) ||
+                                task.category.toLowerCase().includes(searchTerm);
+            const matchesCategory = !categoryFilter || task.category === categoryFilter;
+            const matchesPriority = !priorityFilter || task.priority === priorityFilter;
+
+            return matchesSearch && matchesCategory && matchesPriority;
+        });
+
+        this.renderFilteredTasks(filteredTasks);
+    }
+
+    filterByDate(type) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        let filteredTasks = [];
+
+        switch (type) {
+            case 'today':
+                filteredTasks = this.tasks.filter(task => {
+                    if (!task.date) return false;
+                    const taskDate = new Date(task.date);
+                    return taskDate.getTime() === today.getTime();
+                });
+                break;
+
+            case 'week':
+                const weekEnd = new Date(today);
+                weekEnd.setDate(today.getDate() + 7);
+                
+                filteredTasks = this.tasks.filter(task => {
+                    if (!task.date) return false;
+                    const taskDate = new Date(task.date);
+                    return taskDate >= today && taskDate <= weekEnd;
+                });
+                break;
+
+            case 'late':
+                filteredTasks = this.tasks.filter(task => {
+                    if (!task.date || task.completed) return false;
+                    const taskDate = new Date(task.date);
+                    return taskDate < today;
+                });
+                break;
+        }
+
+        this.renderFilteredTasks(filteredTasks);
+        
+        // Feedback visual
+        document.querySelectorAll('.quick-filters .btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        const activeBtn = document.getElementById(`filter-${type}`);
+        activeBtn.classList.add('active');
+        
+        setTimeout(() => {
+            activeBtn.classList.remove('active');
+        }, 2000);
+    }
+
+    renderTasks() {
+        if (this.currentView === 'list') {
+            this.renderListView();
+        } else {
+            this.renderKanbanView();
+        }
+    }
+
+    renderFilteredTasks(tasks) {
+        if (this.currentView === 'list') {
+            this.renderListView(tasks);
+        } else {
+            this.renderKanbanView(tasks);
+        }
+    }
+
+    renderListView(tasksToRender = null) {
+        const taskList = document.getElementById('task-list');
+        const emptyState = document.getElementById('empty-state');
+        const tasks = tasksToRender || this.tasks;
+
+        taskList.innerHTML = '';
+
+        if (tasks.length === 0) {
+            emptyState.style.display = 'block';
+            return;
+        }
+
+        emptyState.style.display = 'none';
+
+        tasks.forEach(task => {
+            const li = document.createElement('li');
+            li.className = `task-item fade-in ${task.completed ? 'completed' : ''}`;
+            li.setAttribute('data-priority', task.priority);
+
+            const priorityClass = `badge-priority-${task.priority}`;
+            const statusIcon = this.getStatusIcon(task.status);
+            const dateDisplay = task.date ? this.formatDate(task.date) : '';
+            const isOverdue = this.isOverdue(task.date) && !task.completed;
+
+            li.innerHTML = `
+                <div class="task-content">
+                    <div class="task-header">
+                        <div class="task-title ${task.completed ? 'text-decoration-line-through' : ''}">
+                            ${statusIcon} ${this.escapeHtml(task.text)}
+                        </div>
+                        <div class="task-badges">
+                            <span class="badge badge-category">${this.escapeHtml(task.category)}</span>
+                            <span class="badge ${priorityClass}">${task.priority.toUpperCase()}</span>
+                            ${dateDisplay ? `<span class="task-date ${isOverdue ? 'text-danger' : ''}">
+                                <i class="bi bi-calendar"></i> ${dateDisplay}
+                                ${isOverdue ? '<i class="bi bi-exclamation-triangle text-danger"></i>' : ''}
+                            </span>` : ''}
+                        </div>
+                    </div>
+                    <div class="task-actions">
+                        ${!task.completed ? `
+                            <button class="btn btn-warning btn-sm" onclick="taskFlow.moveTaskToInProgress(${task.id})" 
+                                    title="${task.status === 'doing' ? 'Voltar para A Fazer' : 'Mover para Em Andamento'}">
+                                <i class="bi bi-arrow-repeat"></i>
+                            </button>
+                        ` : ''}
+                        <button class="btn btn-info btn-sm" onclick="taskFlow.editTask(${task.id})" title="Editar">
+                            <i class="bi bi-pencil"></i>
                         </button>
-                    ` : `
-                        <button class="btn btn-warning btn-sm in-progress-btn" title="Mover para Em andamento">
+                        <button class="btn btn-danger btn-sm" onclick="taskFlow.deleteTask(${task.id})" title="Excluir">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                        <button class="btn ${task.completed ? 'btn-secondary' : 'btn-success'} btn-sm" 
+                                onclick="taskFlow.toggleTaskStatus(${task.id})" 
+                                title="${task.completed ? 'Reabrir' : 'Concluir'}">
+                            <i class="bi bi-${task.completed ? 'arrow-counterclockwise' : 'check-circle'}"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            taskList.appendChild(li);
+        });
+    }
+
+    renderKanbanView(tasksToRender = null) {
+        const tasks = tasksToRender || this.tasks;
+        
+        const todoTasks = tasks.filter(task => task.status === 'todo');
+        const doingTasks = tasks.filter(task => task.status === 'doing');
+        const doneTasks = tasks.filter(task => task.status === 'done' || task.completed);
+
+        this.renderKanbanColumn('kanban-todo', todoTasks);
+        this.renderKanbanColumn('kanban-doing', doingTasks);
+        this.renderKanbanColumn('kanban-done', doneTasks);
+    }
+
+    renderKanbanColumn(columnId, tasks) {
+        const column = document.getElementById(columnId);
+        column.innerHTML = '';
+
+        if (tasks.length === 0) {
+            column.innerHTML = '<div class="text-center text-muted py-4"><i class="bi bi-inbox"></i><br>Nenhuma tarefa</div>';
+            return;
+        }
+
+        tasks.forEach(task => {
+            const taskCard = document.createElement('div');
+            taskCard.className = 'kanban-task slide-in';
+            taskCard.setAttribute('data-priority', task.priority);
+
+            const priorityClass = `badge-priority-${task.priority}`;
+            const dateDisplay = task.date ? this.formatDate(task.date) : '';
+            const isOverdue = this.isOverdue(task.date) && !task.completed;
+
+            taskCard.innerHTML = `
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <span class="badge badge-category">${this.escapeHtml(task.category)}</span>
+                    <span class="badge ${priorityClass}">${task.priority.toUpperCase()}</span>
+                </div>
+                <div class="fw-semibold mb-2 ${task.completed ? 'text-decoration-line-through' : ''}">
+                    ${this.escapeHtml(task.text)}
+                </div>
+                ${dateDisplay ? `
+                    <div class="task-date ${isOverdue ? 'text-danger' : ''} mb-2">
+                        <i class="bi bi-calendar"></i> ${dateDisplay}
+                        ${isOverdue ? '<i class="bi bi-exclamation-triangle text-danger"></i>' : ''}
+                    </div>
+                ` : ''}
+                <div class="d-flex gap-1 justify-content-end">
+                    ${!task.completed ? `
+                        <button class="btn btn-warning btn-sm" onclick="taskFlow.moveTaskToInProgress(${task.id})" 
+                                title="${task.status === 'doing' ? 'Voltar para A Fazer' : 'Mover para Em Andamento'}">
                             <i class="bi bi-arrow-repeat"></i>
                         </button>
-                    `}
-                    <button class="btn btn-primary btn-sm edit-btn" title="Editar">
+                    ` : ''}
+                    <button class="btn btn-info btn-sm" onclick="taskFlow.editTask(${task.id})" title="Editar">
                         <i class="bi bi-pencil"></i>
                     </button>
-                    <button class="btn btn-danger btn-sm delete-btn" title="Excluir">
+                    <button class="btn btn-danger btn-sm" onclick="taskFlow.deleteTask(${task.id})" title="Excluir">
                         <i class="bi bi-trash"></i>
                     </button>
-                    <button class="btn btn-success btn-sm complete-btn" title="Concluir">
-                        <i class="bi bi-check-lg"></i>
+                    <button class="btn ${task.completed ? 'btn-secondary' : 'btn-success'} btn-sm" 
+                            onclick="taskFlow.toggleTaskStatus(${task.id})" 
+                            title="${task.completed ? 'Reabrir' : 'Concluir'}">
+                        <i class="bi bi-${task.completed ? 'arrow-counterclockwise' : 'check-circle'}"></i>
                     </button>
+                </div>
+            `;
+
+            column.appendChild(taskCard);
+        });
+    }
+
+    toggleView() {
+        const listView = document.getElementById('list-view');
+        const kanbanView = document.getElementById('kanban-view');
+        const toggleBtn = document.getElementById('toggle-view-btn');
+        const viewText = document.getElementById('view-text');
+
+        if (this.currentView === 'list') {
+            this.currentView = 'kanban';
+            listView.style.display = 'none';
+            kanbanView.style.display = 'block';
+            toggleBtn.innerHTML = '<i class="bi bi-list-ul"></i> <span id="view-text">Lista</span>';
+            this.renderKanbanView();
+        } else {
+            this.currentView = 'list';
+            listView.style.display = 'block';
+            kanbanView.style.display = 'none';
+            toggleBtn.innerHTML = '<i class="bi bi-kanban"></i> <span id="view-text">Kanban</span>';
+            this.renderListView();
+        }
+    }
+
+    updateStats() {
+        const total = this.tasks.length;
+        const completed = this.tasks.filter(task => task.completed).length;
+        const pending = total - completed;
+
+        document.getElementById('total-tasks').textContent = total;
+        document.getElementById('completed-tasks').textContent = completed;
+        document.getElementById('pending-tasks').textContent = pending;
+
+        // Animação nos números
+        this.animateNumber('total-tasks', total);
+        this.animateNumber('completed-tasks', completed);
+        this.animateNumber('pending-tasks', pending);
+    }
+
+    animateNumber(elementId, targetValue) {
+        const element = document.getElementById(elementId);
+        const currentValue = parseInt(element.textContent) || 0;
+        
+        if (currentValue === targetValue) return;
+
+        const increment = targetValue > currentValue ? 1 : -1;
+        const timer = setInterval(() => {
+            const current = parseInt(element.textContent);
+            if (current === targetValue) {
+                clearInterval(timer);
+            } else {
+                element.textContent = current + increment;
+            }
+        }, 50);
+    }
+
+    updateCategoryFilter() {
+        const categoryFilter = document.getElementById('filter-category');
+        const categories = [...new Set(this.tasks.map(task => task.category))];
+        
+        const currentValue = categoryFilter.value;
+        categoryFilter.innerHTML = '<option value="">Todas categorias</option>';
+        
+        categories.forEach(category => {
+            const option = document.createElement('option');
+            option.value = category;
+            option.textContent = category;
+            categoryFilter.appendChild(option);
+        });
+        
+        categoryFilter.value = currentValue;
+    }
+
+    applyTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        this.currentTheme = theme;
+        localStorage.setItem('taskflow_theme', theme);
+        
+        this.showToast(`Tema "${this.getThemeName(theme)}" aplicado!`, 'info');
+    }
+
+    getThemeName(theme) {
+        const themes = {
+            'default': 'Padrão',
+            'dark': 'Escuro',
+            'green': 'Verde',
+            'red': 'Vermelho',
+            'blue': 'Azul Pastel'
+        };
+        return themes[theme] || 'Padrão';
+    }
+
+    exportTasks() {
+        if (this.tasks.length === 0) {
+            this.showToast('Não há tarefas para exportar.', 'warning');
+            return;
+        }
+
+        const dataStr = JSON.stringify(this.tasks, null, 2);
+        const dataBlob = new Blob([dataStr], { type: 'application/json' });
+        
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(dataBlob);
+        link.download = `taskflow_backup_${new Date().toISOString().split('T')[0]}.json`;
+        link.click();
+        
+        this.showToast('Tarefas exportadas com sucesso!', 'success');
+    }
+
+    importTasks(file) {
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const importedTasks = JSON.parse(e.target.result);
+                
+                if (!Array.isArray(importedTasks)) {
+                    throw new Error('Formato de arquivo inválido');
+                }
+
+                // Validar estrutura das tarefas
+                const validTasks = importedTasks.filter(task => 
+                    task.text && task.id && task.priority && task.category
+                );
+
+                if (validTasks.length === 0) {
+                    throw new Error('Nenhuma tarefa válida encontrada no arquivo');
+                }
+
+                // Mesclar com tarefas existentes
+                const existingIds = new Set(this.tasks.map(task => task.id));
+                const newTasks = validTasks.filter(task => !existingIds.has(task.id));
+
+                this.tasks.push(...newTasks);
+                this.saveTasks();
+                this.updateStats();
+                this.renderTasks();
+                this.updateCategoryFilter();
+
+                this.showToast(`${newTasks.length} tarefas importadas com sucesso!`, 'success');
+                
+            } catch (error) {
+                this.showToast('Erro ao importar arquivo: ' + error.message, 'error');
+            }
+        };
+
+        reader.readAsText(file);
+        
+        // Limpar input
+        document.getElementById('import-file').value = '';
+    }
+
+    showToast(message, type = 'info') {
+        const toastContainer = document.getElementById('toast-container');
+        const toastId = 'toast-' + Date.now();
+        
+        const toastHtml = `
+            <div class="toast toast-${type}" id="${toastId}" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="toast-header">
+                    <i class="bi bi-${this.getToastIcon(type)} me-2"></i>
+                    <strong class="me-auto">TaskFlow</strong>
+                    <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Fechar"></button>
+                </div>
+                <div class="toast-body">
+                    ${message}
                 </div>
             </div>
         `;
-
-        if (task.status === 'todo' || !task.status) {
-            todoTasks.appendChild(card);
-        } else if (task.status === 'doing') {
-            doingTasks.appendChild(card);
-        } else if (task.status === 'done' || task.completed) {
-            doneTasks.appendChild(card);
-        }
-    });
-
-    updateStats();
-}
-
-// Atualiza estatísticas do dashboard
-function updateStats() {
-    const total = tasks.length;
-    const completed = tasks.filter(t => t.completed).length;
-    const pending = total - completed;
-
-    document.getElementById('total-tasks').textContent = total;
-    document.getElementById('completed-tasks').textContent = completed;
-    document.getElementById('pending-tasks').textContent = pending;
-}
-
-// Salva tarefas no localStorage
-function saveTasks() {
-    localStorage.setItem('tasks', JSON.stringify(tasks));
-}
-
-// Capitaliza primeira letra
-function capitalize(str) {
-    return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
-// Escapa HTML para evitar XSS
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-// ---------------------
-// Filtros
-// ---------------------
-
-// Filtra as tarefas conforme busca, categoria, prioridade e filtros rápidos
-function filterTasks(list) {
-    let filtered = [...list];
-    const search = document.getElementById('search-input')?.value?.toLowerCase() || "";
-    const cat = document.getElementById('filter-category')?.value || "";
-    const prio = document.getElementById('filter-priority')?.value || "";
-
-    if (search) filtered = filtered.filter(t => t.title.toLowerCase().includes(search));
-    if (cat) filtered = filtered.filter(t => t.category === cat);
-    if (prio) filtered = filtered.filter(t => t.priority === prio);
-
-    // Filtros rápidos: hoje, semana, atrasadas
-    if (window.quickFilter === "today") {
-        const today = new Date().toISOString().slice(0,10);
-        filtered = filtered.filter(t => t.due === today);
-    }
-    if (window.quickFilter === "week") {
-        const now = new Date();
-        const week = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7).toISOString().slice(0,10);
-        filtered = filtered.filter(t => t.due && t.due <= week && t.due >= now.toISOString().slice(0,10));
-    }
-    if (window.quickFilter === "late") {
-        const today = new Date().toISOString().slice(0,10);
-        filtered = filtered.filter(t => t.due && t.due < today && !t.completed);
-    }
-    return filtered;
-}
-
-// ---------------------
-// Eventos de Formulários
-// ---------------------
-
-// Adiciona nova tarefa ao enviar o formulário
-document.getElementById('task-form')?.addEventListener('submit', e => {
-    e.preventDefault();
-    const title = document.getElementById('task-input').value.trim();
-    const category = document.getElementById('category-input').value.trim();
-    const priority = document.getElementById('priority-input').value;
-    const due = document.getElementById('date-input').value;
-    if (!title) return showToast("❌ Por favor, digite o nome da tarefa. 😉", "error");
-
-    tasks.push({
-        title, category, priority, due,
-        completed: false,
-        status: "todo",
-        subtasks: []
-    });
-    saveTasks();
-    renderTasks();
-    updateCategoryFilter();
-    e.target.reset();
-    showToast("✅ Tarefa adicionada com sucesso! 🚀", "success");
-});
-
-// Atualiza lista ao usar filtros
-document.getElementById('filters-form')?.addEventListener('input', () => renderTasks());
-
-// Filtros rápidos: hoje, semana, atrasadas
-document.getElementById('filter-today')?.addEventListener('click', () => { 
-    window.quickFilter = "today"; 
-    renderTasks(); 
-    showToast("📅 Mostrando tarefas de hoje", "info");
-});
-document.getElementById('filter-week')?.addEventListener('click', () => { 
-    window.quickFilter = "week"; 
-    renderTasks(); 
-    showToast("📅 Mostrando tarefas desta semana", "info");
-});
-document.getElementById('filter-late')?.addEventListener('click', () => { 
-    window.quickFilter = "late"; 
-    renderTasks(); 
-    showToast("⚠️ Mostrando tarefas atrasadas", "warning");
-});
-
-// Limpar filtros
-document.getElementById('clear-filters')?.addEventListener('click', () => {
-    window.quickFilter = null;
-    document.getElementById('search-input').value = '';
-    document.getElementById('filter-category').value = '';
-    document.getElementById('filter-priority').value = '';
-    renderTasks();
-    showToast("🔄 Filtros limpos", "info");
-});
-
-// ---------------------
-// Ações nas tarefas
-// ---------------------
-
-// Lida com cliques nos botões das tarefas (modo lista e kanban)
-document.getElementById('task-list').addEventListener('click', function(e) {
-    const li = e.target.closest('li[data-idx], .kanban-task[data-idx]');
-    if (!li) return;
-    const idx = +li.dataset.idx;
-
-    // Concluir tarefa
-    if (e.target.closest('.complete-btn')) {
-        tasks[idx].completed = !tasks[idx].completed;
-        tasks[idx].status = tasks[idx].completed ? "done" : "todo";
-        saveTasks();
-        renderTasks();
-        showToast(tasks[idx].completed ? "✅ Incrível! Você concluiu uma tarefa." : "✅ Tarefa marcada como pendente. Continue avançando!", "success");
-    }
-
-    // Excluir tarefa
-    if (e.target.closest('.delete-btn')) {
-        closeAllModals();
-        window.taskToDeleteIdx = idx;
-        const modal = new bootstrap.Modal(document.getElementById('modal-confirm-delete'));
-        modal.show();
-    }
-
-    // Editar tarefa
-    if (e.target.closest('.edit-btn')) {
-        editTask(idx);
-    }
-
-    // Mover para Em andamento
-    if (e.target.closest('.in-progress-btn')) {
-        tasks[idx].status = "doing";
-        tasks[idx].completed = false;
-        saveTasks();
-        renderTasks();
-        showToast("🔄 Tarefa movida para Em andamento!", "info");
-    }
-
-    // Mover para A Fazer
-    if (e.target.closest('.to-todo-btn')) {
-        tasks[idx].status = "todo";
-        tasks[idx].completed = false;
-        saveTasks();
-        renderTasks();
-        showToast("📝 Tarefa movida para A Fazer!", "info");
-    }
-
-    // Marcar/desmarcar subtarefa
-    if (e.target.type === 'checkbox' && e.target.dataset.subidx !== undefined) {
-        const subIdx = +e.target.dataset.subidx;
-        tasks[idx].subtasks[subIdx].done = e.target.checked;
-        saveTasks();
-        showToast(e.target.checked ? "✅ Subtarefa concluída!" : "📝 Subtarefa desmarcada!", "success");
-    }
-});
-
-// ---------------------
-// Edição de tarefas
-// ---------------------
-
-// Abre modal para editar tarefa
-function editTask(idx) {
-    const task = tasks[idx];
-    window.editingTaskIdx = idx;
-    
-    document.getElementById('edit-task-title').value = task.title;
-    document.getElementById('edit-task-category').value = task.category || '';
-    document.getElementById('edit-task-priority').value = task.priority;
-    document.getElementById('edit-task-date').value = task.due || '';
-    
-    const modal = new bootstrap.Modal(document.getElementById('modal-edit-task'));
-    modal.show();
-}
-
-// Salva edições da tarefa
-document.getElementById('edit-task-form')?.addEventListener('submit', e => {
-    e.preventDefault();
-    const idx = window.editingTaskIdx;
-    if (typeof idx !== 'number') return;
-    
-    const title = document.getElementById('edit-task-title').value.trim();
-    const category = document.getElementById('edit-task-category').value.trim();
-    const priority = document.getElementById('edit-task-priority').value;
-    const due = document.getElementById('edit-task-date').value;
-    
-    if (!title) return showToast("❌ Por favor, digite o nome da tarefa.", "error");
-    
-    tasks[idx].title = title;
-    tasks[idx].category = category;
-    tasks[idx].priority = priority;
-    tasks[idx].due = due;
-    
-    saveTasks();
-    renderTasks();
-    updateCategoryFilter();
-    
-    const modal = bootstrap.Modal.getInstance(document.getElementById('modal-edit-task'));
-    modal.hide();
-    
-    showToast("✅ Tarefa editada com sucesso!", "success");
-});
-
-// ---------------------
-// Exportar/Importar
-// ---------------------
-
-// Exporta tarefas para JSON
-function exportTasks() {
-    const dataStr = JSON.stringify(tasks, null, 2);
-    const dataBlob = new Blob([dataStr], {type: 'application/json'});
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `tarefas_${new Date().toISOString().slice(0,10)}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    showToast("📥 Tarefas exportadas com sucesso!", "success");
-}
-
-// Importa tarefas de arquivo JSON
-function importTasks(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        try {
-            const importedTasks = JSON.parse(e.target.result);
-            if (Array.isArray(importedTasks)) {
-                tasks = importedTasks;
-                saveTasks();
-                renderTasks();
-                updateCategoryFilter();
-                showToast("📤 Tarefas importadas com sucesso!", "success");
-            } else {
-                showToast("❌ Arquivo inválido. Deve conter um array de tarefas.", "error");
-            }
-        } catch (error) {
-            showToast("❌ Erro ao ler o arquivo. Verifique se é um JSON válido.", "error");
-        }
-    };
-    reader.readAsText(file);
-    
-    // Limpa o input para permitir reimportar o mesmo arquivo
-    event.target.value = '';
-}
-
-// Event listeners para exportar/importar
-document.getElementById('export-btn')?.addEventListener('click', exportTasks);
-document.getElementById('import-btn')?.addEventListener('click', () => {
-    document.getElementById('import-file').click();
-});
-document.getElementById('import-file')?.addEventListener('change', importTasks);
-
-// ---------------------
-// Visualização (Lista/Kanban)
-// ---------------------
-
-// Alterna entre visualização lista e kanban
-function toggleView() {
-    currentView = currentView === 'list' ? 'kanban' : 'list';
-    localStorage.setItem('currentView', currentView);
-    renderTasks();
-    
-    const btn = document.getElementById('toggle-view-btn');
-    if (btn) {
-        btn.innerHTML = currentView === 'list' ? 
-            '<i class="bi bi-kanban"></i> Kanban' : 
-            '<i class="bi bi-list-ul"></i> Lista';
-    }
-    
-    showToast(`📋 Visualização alterada para ${currentView === 'list' ? 'Lista' : 'Kanban'}`, "info");
-}
-
-document.getElementById('toggle-view-btn')?.addEventListener('click', toggleView);
-
-// ---------------------
-// Temas
-// ---------------------
-
-// Aplica o tema escolhido e salva no localStorage
-function applyTheme(theme) {
-    document.body.classList.remove('dark', 'theme-green', 'theme-red', 'theme-blue');
-    if (theme === "dark") {
-        document.body.classList.add('dark');
-    } else if (theme === "green") {
-        document.body.classList.add('theme-green');
-    } else if (theme === "red") {
-        document.body.classList.add('theme-red');
-    } else if (theme === "blue") {
-        document.body.classList.add('theme-blue');
-    }
-    // Se for padrão, não adiciona nenhuma classe!
-    localStorage.setItem('theme', theme);
-    currentTheme = theme;
-    showToast(`🎨 Tema alterado para ${theme === 'default' ? 'Padrão' : capitalize(theme)}`, "info");
-}
-
-// Aplica o tema ao iniciar
-applyTheme(currentTheme);
-
-// Troca de tema ao clicar nos botões de tema
-document.querySelectorAll('[data-theme]').forEach(el => {
-    el.addEventListener('click', e => {
-        e.preventDefault();
-        const theme = el.getAttribute('data-theme');
-        applyTheme(theme);
-    });
-});
-
-// ---------------------
-// Utilitários adicionais
-// ---------------------
-
-// Atualiza o filtro de categorias com as categorias existentes
-function updateCategoryFilter() {
-    const catSet = new Set(tasks.map(t => t.category).filter(Boolean));
-    const catSel = document.getElementById('filter-category');
-    if (catSel) {
-        const currentValue = catSel.value;
-        catSel.innerHTML = `<option value="">Todas categorias</option>`;
-        catSet.forEach(cat => {
-            catSel.innerHTML += `<option value="${cat}">${cat}</option>`;
-        });
-        catSel.value = currentValue;
-    }
-}
-
-// Habilita tooltips do Bootstrap
-function enableTooltips() {
-    if (window.bootstrap) {
-        document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
-            new bootstrap.Tooltip(el, {
-                container: 'body',
-                boundary: 'window',
-                placement: window.innerWidth < 700 ? 'bottom' : 'top'
-            });
+        
+        toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+        
+        const toastElement = document.getElementById(toastId);
+        const toast = new bootstrap.Toast(toastElement, { delay: 4000 });
+        toast.show();
+        
+        // Remover toast após ser ocultado
+        toastElement.addEventListener('hidden.bs.toast', () => {
+            toastElement.remove();
         });
     }
+
+    getToastIcon(type) {
+        const icons = {
+            'success': 'check-circle-fill',
+            'error': 'exclamation-triangle-fill',
+            'warning': 'exclamation-triangle-fill',
+            'info': 'info-circle-fill'
+        };
+        return icons[type] || 'info-circle-fill';
+    }
+
+    getStatusIcon(status) {
+        const icons = {
+            'todo': '<i class="bi bi-circle text-warning"></i>',
+            'doing': '<i class="bi bi-arrow-repeat text-info"></i>',
+            'done': '<i class="bi bi-check-circle-fill text-success"></i>'
+        };
+        return icons[status] || icons['todo'];
+    }
+
+    formatDate(dateString) {
+        if (!dateString) return '';
+        
+        const date = new Date(dateString);
+        const today = new Date();
+        const tomorrow = new Date(today);
+        tomorrow.setDate(today.getDate() + 1);
+        
+        if (date.toDateString() === today.toDateString()) {
+            return 'Hoje';
+        } else if (date.toDateString() === tomorrow.toDateString()) {
+            return 'Amanhã';
+        } else {
+            return date.toLocaleDateString('pt-BR');
+        }
+    }
+
+    isOverdue(dateString) {
+        if (!dateString) return false;
+        
+        const taskDate = new Date(dateString);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        return taskDate < today;
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    saveTasks() {
+        localStorage.setItem('taskflow_tasks', JSON.stringify(this.tasks));
+    }
+
+    showWelcomeMessage() {
+        if (this.tasks.length === 0) {
+            setTimeout(() => {
+                this.showToast('Bem-vindo ao TaskFlow! Adicione sua primeira tarefa para começar.', 'info');
+            }, 1000);
+        }
+    }
 }
 
-// ---------------------
-// Inicialização
-// ---------------------
+// Inicializar aplicação
+let taskFlow;
 
-// Ao carregar a página, preenche filtros e renderiza tarefas
 document.addEventListener('DOMContentLoaded', () => {
-    updateCategoryFilter();
-    renderTasks();
-    enableTooltips();
+    taskFlow = new TaskFlow();
+});
+
+// Atalhos de teclado
+document.addEventListener('keydown', (e) => {
+    // Ctrl/Cmd + N para nova tarefa
+    if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+        e.preventDefault();
+        document.getElementById('task-input').focus();
+    }
     
-    // Configura o botão de visualização
-    const btn = document.getElementById('toggle-view-btn');
-    if (btn) {
-        btn.innerHTML = currentView === 'list' ? 
-            '<i class="bi bi-kanban"></i> Kanban' : 
-            '<i class="bi bi-list-ul"></i> Lista';
+    // Ctrl/Cmd + K para busca
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        document.getElementById('search-input').focus();
+    }
+    
+    // Ctrl/Cmd + Shift + K para alternar visualização
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'K') {
+        e.preventDefault();
+        taskFlow.toggleView();
     }
 });
 
-// Fecha todos os modais abertos
-function closeAllModals() {
-    document.querySelectorAll('.modal.show').forEach(modalEl => {
-        bootstrap.Modal.getInstance(modalEl)?.hide();
+// Service Worker para PWA (opcional)
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+            .then(registration => {
+                console.log('SW registered: ', registration);
+            })
+            .catch(registrationError => {
+                console.log('SW registration failed: ', registrationError);
+            });
     });
 }
-
-// Confirma exclusão de tarefa (usado no modal)
-function confirmDeleteTask() {
-    const idx = window.taskToDeleteIdx;
-    if (typeof idx === "number") {
-        tasks.splice(idx, 1);
-        saveTasks();
-        renderTasks();
-        updateCategoryFilter();
-        showToast("✅ Tarefa removida. Menos uma para se preocupar!", "success");
-        // Fecha o modal
-        const modal = bootstrap.Modal.getInstance(document.getElementById('modal-confirm-delete'));
-        if (modal) modal.hide();
-    }
-}
-window.confirmDeleteTask = confirmDeleteTask;
 
