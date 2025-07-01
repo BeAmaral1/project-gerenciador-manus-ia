@@ -89,6 +89,165 @@ body {
     font-family: 'Segoe UI', Arial, sans-serif;
     min-height: 100vh;
     transition: background 0.3s, color 0.3s;
+    overflow-x: hidden; /* Previne scroll horizontal */
+}
+
+/* Melhorias para mobile */
+@media (max-width: 768px) {
+    .container {
+        padding-left: 15px;
+        padding-right: 15px;
+    }
+    
+    /* Navbar mobile */
+    .navbar-brand {
+        font-size: 1.2rem !important;
+    }
+    
+    .navbar-brand span {
+        font-size: 1.1rem !important;
+    }
+    
+    /* Cards dashboard mobile */
+    .card {
+        margin-bottom: 1rem;
+    }
+    
+    .card .fs-2 {
+        font-size: 1.8rem !important;
+    }
+    
+    .card .fw-bold {
+        font-size: 1.5rem !important;
+    }
+    
+    .card-title {
+        font-size: 0.9rem;
+    }
+    
+    /* Formulários mobile */
+    .form-control, .form-select {
+        font-size: 16px; /* Previne zoom no iOS */
+        padding: 12px 15px;
+        margin-bottom: 10px;
+    }
+    
+    .btn {
+        padding: 12px 20px;
+        font-size: 14px;
+        min-height: 44px; /* Tamanho mínimo para touch */
+    }
+    
+    /* Filtros mobile */
+    .row.g-2 {
+        gap: 0.5rem !important;
+    }
+    
+    .col-md-4, .col-md-3, .col-md-2 {
+        width: 100%;
+        margin-bottom: 10px;
+    }
+    
+    /* Botões de filtro rápido mobile */
+    .d-flex.gap-2 {
+        flex-wrap: wrap;
+        gap: 0.5rem !important;
+    }
+    
+    .btn-sm {
+        padding: 8px 12px;
+        font-size: 12px;
+        min-height: 36px;
+    }
+    
+    /* Lista de tarefas mobile */
+    .list-group-item {
+        padding: 15px;
+        margin-bottom: 10px;
+        border-radius: var(--radius);
+    }
+    
+    .list-group-item .actions {
+        margin-top: 10px;
+        justify-content: center;
+    }
+    
+    .list-group-item .actions .btn {
+        margin: 2px;
+        min-width: 40px;
+        min-height: 40px;
+    }
+    
+    /* Kanban mobile */
+    .kanban-container {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .kanban-col {
+        min-width: 100%;
+        margin-bottom: 1rem;
+    }
+    
+    .kanban-task {
+        margin-bottom: 10px;
+        padding: 12px;
+    }
+    
+    /* Modal mobile */
+    .modal-dialog {
+        margin: 10px;
+        max-width: calc(100% - 20px);
+    }
+    
+    .modal-body {
+        padding: 20px 15px;
+    }
+    
+    /* Toast mobile */
+    .toast {
+        max-width: calc(100% - 20px);
+        margin: 10px;
+    }
+}
+
+/* Melhorias para tablets */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .container {
+        max-width: 100%;
+        padding-left: 20px;
+        padding-right: 20px;
+    }
+    
+    .col-md-4 {
+        flex: 0 0 50%;
+        max-width: 50%;
+    }
+    
+    .col-md-3 {
+        flex: 0 0 33.333333%;
+        max-width: 33.333333%;
+    }
+    
+    .kanban-col {
+        min-width: 300px;
+    }
+}
+
+/* Touch improvements */
+@media (hover: none) and (pointer: coarse) {
+    .btn, .form-control, .form-select {
+        min-height: 44px;
+    }
+    
+    .card:hover {
+        transform: none; /* Remove hover effects em touch devices */
+    }
+    
+    .list-group-item .actions .btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
 }
 a {
     color: var(--primary);
